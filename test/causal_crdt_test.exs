@@ -1,5 +1,6 @@
 defmodule CausalCrdtTest do
   use ExUnit.Case, async: true
+  import Liveness
   doctest DeltaCrdt
 
   alias DeltaCrdt.AWLWWMap
@@ -70,6 +71,17 @@ defmodule CausalCrdtTest do
       Process.sleep(100)
       assert %{} == DeltaCrdt.to_map(context.c1)
       assert %{} == DeltaCrdt.to_map(context.c2)
+    end
+
+    test "add is synced from stopped context to other contexts",
+    %{c1: c1, c2: c2, c3: c3} do
+      DeltaCrdt.put(c1, "key", "value")
+      :ok = GenServer.stop(c1)
+
+      eventually(fn ->
+        assert %{"key" => "value"} == DeltaCrdt.to_map(c2)
+        assert %{"key" => "value"} == DeltaCrdt.to_map(c3)
+      end)
     end
   end
 

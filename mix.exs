@@ -30,6 +30,7 @@ defmodule DeltaCrdt.MixProject do
       {:exprof, "~> 0.2.0", only: :dev, runtime: false},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:merkle_map, "~> 0.2.0"},
+      {:liveness, "~> 1.0"},
       {:stream_data, "~> 0.4", only: :test}
     ]
   end
