@@ -72,6 +72,19 @@ defmodule CausalCrdtTest do
       assert %{} == DeltaCrdt.to_map(context.c1)
       assert %{} == DeltaCrdt.to_map(context.c2)
     end
+  end
+
+  describe "termination handling" do
+    setup do
+      {:ok, c1} = DeltaCrdt.start_link(AWLWWMap, sync_interval: 50)
+      {:ok, c2} = DeltaCrdt.start_link(AWLWWMap, sync_interval: 50)
+      {:ok, c3} = DeltaCrdt.start_link(AWLWWMap, sync_interval: 50)
+
+      DeltaCrdt.set_neighbours(c1, [c1, c2, c3])
+      DeltaCrdt.set_neighbours(c2, [c1, c2])
+      DeltaCrdt.set_neighbours(c3, [c1, c3])
+      [c1: c1, c2: c2, c3: c3]
+    end
 
     test "add is synced from stopped context to other contexts",
     %{c1: c1, c2: c2, c3: c3} do
