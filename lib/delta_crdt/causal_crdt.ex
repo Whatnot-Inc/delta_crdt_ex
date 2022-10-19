@@ -24,9 +24,7 @@ defmodule DeltaCrdt.CausalCrdt do
             neighbour_monitors: %{},
             outstanding_syncs: %{},
             sync_interval: nil,
-            max_sync_size: nil,
-            syncs_in_flight: MapSet.new()
-
+            max_sync_size: nil
 
   defmodule(Diff, do: defstruct(continuation: nil, dots: nil, originator: nil, from: nil, to: nil))
 
@@ -112,10 +110,16 @@ defmodule DeltaCrdt.CausalCrdt do
   end
 
   def handle_info({:get_diff, diff, keys}, state) do
-    handle_get_diff(diff, keys, state)
-    new_syncs_inflight = MapSet.delete(state.syncs_in_flight, diff.from)
-    new_state = Map.put(state, :syncs_in_flight, new_syncs_inflight)
-    {:noreply, new_state}
+    diff = reverse_diff(diff)
+
+    send(
+      diff.to,
+      {:diff,
+       %{state.crdt_state | dots: diff.dots, value: Map.take(state.crdt_state.value, keys)}, keys}
+    )
+
+    ack_diff(diff)
+    {:noreply, state}
   end
 
   def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
@@ -207,32 +211,7 @@ defmodule DeltaCrdt.CausalCrdt do
   # TODO this won't sync everything anymore, since syncing is now a 2-step process.
   # Figure out how to do this properly. Maybe with a `receive` block.
   def terminate(_reason, state) do
-    state
-    |> sync_interval_or_state_to_all()
-    |> handle_syncs_in_flight()
-  end
-
-  defp handle_syncs_in_flight(state) do
-    Enum.each(state.syncs_in_flight, fn from ->
-      receive do
-        {:get_diff, %{from: ^from}=diff, keys} ->
-          handle_get_diff(diff, keys, state)
-        {:diff, %{from: ^from}, _keys} ->
-          :noop
-      end
-    end)
-  end
-
-  defp handle_get_diff(diff, keys, state) do
-    diff = reverse_diff(diff)
-
-    send(
-      diff.to,
-      {:diff,
-       %{state.crdt_state | dots: diff.dots, value: Map.take(state.crdt_state.value, keys)}, keys}
-    )
-
-    ack_diff(diff)
+    sync_interval_or_state_to_all(state)
   end
 
   defp truncate(list, :infinite), do: list
@@ -293,7 +272,7 @@ defmodule DeltaCrdt.CausalCrdt do
       originator: self()
     }
 
-    sync_results =
+    new_outstanding_syncs =
       Enum.map(state.neighbour_monitors, fn {neighbour, _monitor} -> neighbour end)
       |> Enum.reject(fn pid -> self() == pid end)
       |> Enum.reduce(state.outstanding_syncs, fn neighbour, outstanding_syncs ->
@@ -313,21 +292,11 @@ defmodule DeltaCrdt.CausalCrdt do
           end
         end)
       end)
-
-    new_syncs_inflight =
-      sync_results
-      |> Enum.filter(&match?({_, 1}, &1))
-      |> MapSet.new(&elem(&1, 0))
-      |> MapSet.union(state.syncs_in_flight)
-
-    new_outstanding_syncs =
-      sync_results
       |> Enum.filter(&match?({_, 0}, &1))
       |> Map.new()
 
     Map.put(state, :outstanding_syncs, new_outstanding_syncs)
     |> Map.put(:merkle_map, new_merkle_map)
-    |> Map.put(:syncs_in_flight, new_syncs_inflight)
   end
 
   defp monitor_neighbours(state) do
