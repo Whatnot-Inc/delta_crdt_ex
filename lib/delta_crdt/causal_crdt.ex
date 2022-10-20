@@ -421,9 +421,15 @@ defmodule DeltaCrdt.CausalCrdt do
         {:remove, key}, {mm, count} -> {MerkleMap.delete(mm, key), count + 1}
       end)
 
-    :telemetry.execute([:delta_crdt, :sync, :done], %{keys_updated_count: count}, %{
-      name: state.name
-    })
+    map_size = length(MerkleMap.keys(new_merkle_map))
+
+    :telemetry.execute(
+      [:delta_crdt, :sync, :done],
+      %{keys_updated_count: count, keys_total_count: map_size},
+      %{
+        name: state.name
+      }
+    )
 
     diffs_to_callback(state, new_state, diffs_keys(diffs))
 
